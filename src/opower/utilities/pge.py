@@ -154,6 +154,11 @@ class PGE(UtilityBase):
         return "pge"
 
     @staticmethod
+    def supports_multiple_user_accounts() -> bool:
+        """Check if a user account at the utility can access multiple opower accounts."""
+        return True
+
+    @staticmethod
     def timezone() -> str:
         """Return the timezone."""
         return "America/Los_Angeles"
@@ -292,26 +297,19 @@ class PGE(UtilityBase):
         if not userAccountsS:
             raise InvalidAuth(f"No userAccounts found in {action}")
         userAccounts = json.loads(userAccountsS)
-        self.userAccounts = set()
+        self.userAccounts = []  # must be a list, as ordering is important.
         for item in userAccounts:
-            self.userAccounts.add(item["value"])
+            self.userAccounts.append(item["value"])
         _LOGGER.debug("loaded user accounts: %s", self.userAccounts)
 
-    def get_user_accounts(self) -> set[str]:
+    def get_user_accounts(self) -> list[str]:
         """Return all PGE accounts associated with the user."""
         if self.userAccounts:
             return self.userAccounts
-        return set()
+        return []
 
-    async def async_set_user_account(self, session: aiohttp.ClientSession, account_id: str) -> str:
-        """Set active account to the specified account ID.
-
-        Must be one of those returned from `get_user_accounts()`.
-
-        Returns:
-            str: new access token to be used for accessing opower
-
-        """
+    async def async_switch_user_account(self, session: aiohttp.ClientSession, account_id: str) -> str:
+        """Set active account to the specified account ID."""
         if not self.userAccounts:
             raise InvalidAuth("Login must be called before setting a user account")
         if account_id not in self.userAccounts:

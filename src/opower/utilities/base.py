@@ -59,6 +59,11 @@ class UtilityBase(abc.ABC):
         """Check if Utility supports realtime usage reads."""
         return False
 
+    @staticmethod
+    def supports_multiple_user_accounts() -> bool:
+        """Check if a user account at the utility can access multiple opower accounts."""
+        return False
+
     def set_totp_secret(self, totp_secret: str) -> None:
         """Set the TOTP secret."""
         self._totp_secret = totp_secret
@@ -81,6 +86,28 @@ class UtilityBase(abc.ABC):
         :raises aiohttp.ClientError: if there is a network error
         """
         raise NotImplementedError
+
+    def get_user_accounts(self) -> list[str]:
+        """Return all accounts associated with the user, each of which corresponds to a unique opower account.
+
+        Only used if `supports_multiple_user_accounts()` is True
+        """
+        return []
+
+    async def async_switch_user_account(self, session: aiohttp.ClientSession, account_id: str) -> str:
+        """Set active account to the specified account ID.
+
+        Must be one of those returned from `get_user_accounts()`.
+        Only used if `supports_multiple_user_accounts()` is True
+
+        Returns:
+            str: new access token to be used for accessing opower
+
+        Exception:
+            InvalidAuth: if inappropriate account_id is provided, or if this is called before `login()`
+
+        """
+        return ""
 
 
 class MfaHandlerBase(abc.ABC):

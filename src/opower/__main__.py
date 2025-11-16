@@ -21,7 +21,6 @@ from opower import (
     get_supported_utilities,
     select_utility,
 )
-from opower.utilities.pge import PGE
 
 
 async def _main() -> None:
@@ -140,15 +139,14 @@ async def _main() -> None:
             logging.exception("Login failed")
             return
 
-        if isinstance(opower.utility, PGE):
-            pge: PGE = opower.utility
-            accounts = pge.get_user_accounts()
+        if opower.utility.supports_multiple_user_accounts():
+            accounts = opower.utility.get_user_accounts()
             if len(accounts) > 1:
                 for i, account in enumerate(accounts):
                     if i > 0:
-                        opower.access_token = await pge.async_set_user_account(session, account)
+                        opower.access_token = await opower.utility.async_switch_user_account(session, account)
                         opower.flush_cache()
-                    print(f"Exporting PGE account {account}")
+                    print(f"Exporting account {account}")
                     await _export(args, opower)
                 return
         await _export(args, opower)
