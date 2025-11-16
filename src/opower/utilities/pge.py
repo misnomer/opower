@@ -213,7 +213,7 @@ class PGE(UtilityBase):
         )
 
         _LOGGER.debug("Accessing main account page to set cookies")
-        resp = await session.get(
+        resp = await session.get(  # noqa: F841
             "https://myaccount.pge.com/myaccount/s/",
             headers={"User-Agent": USER_AGENT},
             raise_for_status=True,
@@ -227,6 +227,7 @@ class PGE(UtilityBase):
                 break
         if not aura_token:
             raise InvalidAuth("Could not find Aura token in cookies after login")
+        self.aura_token = aura_token
 
         for classname, method in (
             ("MyAcct_OneTrustIntegrationController", "generateToken"),
@@ -248,6 +249,108 @@ class PGE(UtilityBase):
             }
             await _aura_apex_action_execute(session, body)
 
+        # fetch user accounts
+        await self._async_fetch_pge_accounts(session)
+        # fetch token for first account
+        return await self._async_fetch_token(session)
+
+    async def _async_fetch_pge_accounts(self, session: aiohttp.ClientSession) -> None:
+        aura_token = self.aura_token
+        if not aura_token:
+            raise InvalidAuth("Could not find Aura token in cookies")
+
+        classname, method = ("MyAcct_AccountCacheHandler", "getOrgCacheVar")
+        _LOGGER.debug("fetching user accounts via %s.%s", classname, method)
+        body = {
+            "message": {
+                "actions": [
+                    {
+                        "descriptor": "aura://ApexActionController/ACTION$execute",
+                        "params": {
+                            "classname": classname,
+                            "method": method,
+                            "params": {
+                                "input": {"prefix": "platform"},
+                            },
+                        },
+                    }
+                ]
+            },
+            "aura.context": {"app": "siteforce:communityApp"},
+            "aura.pageURI": "/myaccount/s/",
+            "aura.token": aura_token,
+        }
+        res = await _aura_apex_action_execute(session, body)
+        actions = res.get("actions", [])
+        if not actions:
+            raise InvalidAuth("No actions returned from login response")
+        action = actions[0]
+        if not action.get("state") == "SUCCESS":
+            raise InvalidAuth(f"Fetch accounts failed: {action.get('error', 'Unknown error')}")
+        userAccountsS = action.get("returnValue", {}).get("returnValue", {}).get("userAccounts")
+        _LOGGER.debug("user accounts: %s", json.dumps(userAccountsS, indent=2))
+        if not userAccountsS:
+            raise InvalidAuth(f"No userAccounts found in {action}")
+        userAccounts = json.loads(userAccountsS)
+        self.userAccounts = set()
+        for item in userAccounts:
+            self.userAccounts.add(item["value"])
+        _LOGGER.debug("loaded user accounts: %s", self.userAccounts)
+
+    def get_user_accounts(self) -> set[str]:
+        """Return all PGE accounts associated with the user."""
+        if self.userAccounts:
+            return self.userAccounts
+        return set()
+
+    async def async_set_user_account(self, session: aiohttp.ClientSession, account_id: str) -> str:
+        """Set active account to the specified account ID.
+
+        Must be one of those returned from `get_user_accounts()`.
+
+        Returns:
+            str: new access token to be used for accessing opower
+
+        """
+        if not self.userAccounts:
+            raise InvalidAuth("Login must be called before setting a user account")
+        if account_id not in self.userAccounts:
+            raise InvalidAuth(f"Account {account_id} is not supported.  Supported accounts: {self.userAccounts}")
+        aura_token = self.aura_token
+        if not aura_token:
+            raise InvalidAuth("Could not find Aura token in cookies")
+
+        classname, method = ("MyAcct_AccountCacheHandler", "setBillingAccountSelection")
+        body = {
+            "message": {
+                "actions": [
+                    {
+                        "descriptor": "aura://ApexActionController/ACTION$execute",
+                        "params": {
+                            "classname": classname,
+                            "method": method,
+                            "params": {"ccspAccountId": account_id},
+                        },
+                    }
+                ]
+            },
+            "aura.context": {"app": "siteforce:communityApp"},
+            "aura.pageURI": "/myaccount/s/",
+            "aura.token": aura_token,
+        }
+        res = await _aura_apex_action_execute(session, body)
+        actions = res.get("actions", [])
+        if not actions:
+            raise InvalidAuth("No actions returned from set account")
+        action = actions[0]
+        if not action.get("state") == "SUCCESS":
+            raise InvalidAuth(f"Set account failed: {action.get('error', 'Unknown error')}")
+        return await self._async_fetch_token(session)
+
+    async def _async_fetch_token(
+        self,
+        session: aiohttp.ClientSession,
+    ) -> str:
         _LOGGER.debug("Fetching OpowerDataBrowser to extract token")
         resp = await session.get(
             "https://myaccount.pge.com/myaccount/apex/MyAcct_VF_BillInsights_OpowerDataBrowser",

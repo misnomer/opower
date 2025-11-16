@@ -190,6 +190,10 @@ class Opower:
             self.utility.set_totp_secret(self.optional_totp_secret.strip())
         self.login_data: dict[str, Any] = login_data or {}
         self.access_token: str | None = None
+        self.flush_cache()
+
+    def flush_cache(self) -> None:
+        """Flush any cached data."""
         self.customers: list[Any] = []
         self.user_accounts: list[Any] = []
         self.meters: list[str] = []
