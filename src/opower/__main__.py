@@ -153,10 +153,15 @@ async def _main() -> None:
 
 
 async def _export(args: argparse.Namespace, opower: Opower) -> None:
-    if True:
+    if True:  # here to preserve indentation and make git diff happier.  Remove at will.
         if not args.csv:
             for forecast in await opower.async_get_forecast():
                 print("\nCurrent bill forecast:", forecast)
+        else:
+            with open(args.csv, "w"):
+                # truncate
+                pass
+        header_written = False
         for account in await opower.async_get_accounts():
             aggregate_type = args.aggregate_type
             if aggregate_type == AggregateType.HOUR and account.read_resolution == ReadResolution.DAY:
@@ -187,25 +192,29 @@ async def _export(args: argparse.Namespace, opower: Opower) -> None:
                         args.end_date,
                     )
                 if args.csv:
-                    with open(args.csv, "w", newline="") as csv_file:
+                    with open(args.csv, "a", newline="") as csv_file:
                         writer = csv.writer(csv_file)
-                        writer.writerow(["start_time", "end_time", "consumption"])
+                        if not header_written:
+                            writer.writerow(["account", "start_time", "end_time", "consumption"])
+                            header_written = True
                         for usage_read in usage_data:
                             writer.writerow(
                                 [
+                                    account.utility_account_id,
                                     usage_read.start_time,
                                     usage_read.end_time,
                                     usage_read.consumption,
                                 ]
                             )
                 else:
-                    print("start_time\tend_time\tconsumption\tstart_minus_prev_end\tend_minus_prev_end")
+                    print("account\tstart_time\tend_time\tconsumption\tstart_minus_prev_end\tend_minus_prev_end")
                     for usage_read in usage_data:
                         start_minus_prev_end = None if prev_end is None else usage_read.start_time - prev_end
                         end_minus_prev_end = None if prev_end is None else usage_read.end_time - prev_end
                         prev_end = usage_read.end_time
                         print(
-                            f"{usage_read.start_time}"
+                            f"{account.utility_account_id}"
+                            f"\t{usage_read.start_time}"
                             f"\t{usage_read.end_time}"
                             f"\t{usage_read.consumption}"
                             f"\t{start_minus_prev_end}"
@@ -220,12 +229,15 @@ async def _export(args: argparse.Namespace, opower: Opower) -> None:
                     args.end_date,
                 )
                 if args.csv:
-                    with open(args.csv, "w", newline="") as csv_file:
+                    with open(args.csv, "a", newline="") as csv_file:
                         writer = csv.writer(csv_file)
-                        writer.writerow(["start_time", "end_time", "consumption", "provided_cost"])
+                        if not header_written:
+                            writer.writerow(["account", "start_time", "end_time", "consumption", "provided_cost"])
+                            header_written = True
                         for cost_read in cost_data:
                             writer.writerow(
                                 [
+                                    account.utility_account_id,
                                     cost_read.start_time,
                                     cost_read.end_time,
                                     cost_read.consumption,
@@ -233,13 +245,16 @@ async def _export(args: argparse.Namespace, opower: Opower) -> None:
                                 ]
                             )
                 else:
-                    print("start_time\tend_time\tconsumption\tprovided_cost\tstart_minus_prev_end\tend_minus_prev_end")
+                    print(
+                        "account\tstart_time\tend_time\tconsumption\tprovided_cost\tstart_minus_prev_end\tend_minus_prev_end"
+                    )
                     for cost_read in cost_data:
                         start_minus_prev_end = None if prev_end is None else cost_read.start_time - prev_end
                         end_minus_prev_end = None if prev_end is None else cost_read.end_time - prev_end
                         prev_end = cost_read.end_time
                         print(
-                            f"{cost_read.start_time}"
+                            f"{account.utility_account_id}"
+                            f"\t{cost_read.start_time}"
                             f"\t{cost_read.end_time}"
                             f"\t{cost_read.consumption}"
                             f"\t{cost_read.provided_cost}"
