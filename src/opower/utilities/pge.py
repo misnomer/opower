@@ -1,5 +1,6 @@
 """Pacific Gas & Electric (PG&E)."""
 
+import asyncio
 import json
 import logging
 import re
@@ -255,7 +256,16 @@ class PGE(UtilityBase):
             await _aura_apex_action_execute(session, body)
 
         # fetch user accounts
-        await self._async_fetch_pge_accounts(session)
+        for i in range(1, 4):
+            try:
+                await self._async_fetch_pge_accounts(session)
+                break
+            except InvalidAuth as e:
+                _LOGGER.info(" attempt %d at user account failed: %s.  Try again.", i, e)
+                if i < 4:
+                    await asyncio.sleep(0.5)
+                else:
+                    raise
         # fetch token for first account
         return await self._async_fetch_token(session)
 
